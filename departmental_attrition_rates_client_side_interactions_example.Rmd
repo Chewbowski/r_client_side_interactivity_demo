@@ -1,0 +1,1316 @@
+---
+title: "Departmental Attrition Rates"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    navbar:
+      - { title: "Dashboard Creator",
+          href: 'https://www.linkedin.com/in/hughwelchdata',
+          align: right }
+editor_options: 
+  chunk_output_type: console
+---
+
+
+<!-- 
+
+Author: Hugh Welch
+Linked In: https://www.linkedin.com/in/hughwelchdata
+
+
+Built with
+------------------------------------------------------------
+R Version: 4.1.2
+RStudio Version: 1.4.1106
+------------------------------------------------------------
+
+
+Notes:
+------------------------------------------------------------
+This example is intended to demonstrate some of the ways you can use readily
+available packages in R to develop static files containing client-side
+interactivity including tooltips, highlighting, and filtering.
+This is a handy way to create .html files that can be sent via email or
+uploaded to a shared repository for access by multiple users concurrently.
+You can also convert the files to .apsx for upload to SharePoint as well.
+This technique is not meant as a replacement for Shiny, but as a workaround if
+Shiny is not an option. Please note that this methodology does not scale as 
+efficiently as a server based approach.
+
+Thank you so much to the awesome teams of people who work to make these 
+packages available to the open source community and maintain them!!! 
+I especially appreciate Carson Sievert and Joe Cheng for the amazing resources 
+they make freely available.
+For additional information see https://plotly-r.com/client-side-linking.html
+ -->
+
+
+```{css my-content, echo=FALSE}
+    .value-box .caption {
+    font-size: 20px; font-weight: bold;}
+
+# increases valuebox text size
+
+```
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(plotly)
+library(flexdashboard)
+library(tidymodels)
+library(crosstalk)
+library(scales)
+library(htmlwidgets)
+library(DT)
+
+# library(skimr)
+# library(DataExplorer)
+
+# I use the skimr and dataexplorer packages when getting to grips
+# with new datasets but they're not necessary to build the final output
+
+```
+
+
+```{r load_data}
+
+data("attrition")
+
+df <- attrition
+
+# duplicating the dataset is not necessary but I kept introducing so many errors
+# by confusing the "attrition" dataset with the "Attrition" field in the 
+# "attrition" dataset that I just made a copy to mentally keep them separate
+# ...in hindsight I guess I could have just renamed the field...
+
+```
+
+
+```{r valuebox_aggregates}
+
+value_box_agg <-
+  df %>%
+  summarise(
+    Department = 'Total',
+    count = n(),
+    attrition_rate = sum(Attrition == 'Yes') / count,
+    jobsat_topbox = sum(JobSatisfaction == 'Very_High') / count,
+    mean_mnthincom = dollar(
+      mean(MonthlyIncome),
+      accuracy = 1.0,
+      big.mark = ','
+    )
+  ) %>%
+  ungroup() %>%
+  bind_rows(
+    df %>%
+      group_by(Department) %>%
+      summarise(
+        count = n(),
+        attrition_rate = sum(Attrition == 'Yes') / count,
+        jobsat_topbox = sum(JobSatisfaction == 'Very_High') / count,
+        mean_mnthincom = dollar(
+          mean(MonthlyIncome),
+          accuracy = 1.0,
+          big.mark = ','
+        )
+      ) %>%
+      ungroup()
+  ) %>%
+  mutate(Department = str_replace_all(Department, '_', ' ')) %>%
+  mutate(count = comma(count, accuracy = 1.0)) %>%
+  mutate(across(c(attrition_rate, jobsat_topbox),
+                ~ percent(., accuracy = 0.1)))
+
+# creates a dataframe of aggregate values for use in the BAN valuebox captions
+
+```
+
+
+```{r set_department_colors}
+
+# # default colors
+# department_colors <- c('Total' = '#263238',
+#                        'Human Resources' = '#0D47A1',
+#                        'Research Development' = '#00796B',
+#                        'Sales' = '#880E4F')
+
+# this was the first attempt for the valuebox colors that will also serve as 
+# the legend for the landing page. I eventually needed them to be a little 
+# lighter so you can see the caret icon indicating your current page
+
+# I love the quick color reference built the R at the link below
+# https://chichacha.netlify.app/2018/12/09/having-bit-of-party-with-material-colour-palette/
+
+
+
+
+# default colors
+department_colors <- c('Total' = '#455A64',
+                       'Human Resources' = '#1565C0',
+                       'Research Development' = '#00897B',
+                       'Sales' = '#AD1457')
+
+
+```
+
+
+```{r set_page_links}
+
+department_links <- c('Total' = 'total',
+                       'Human Resources' = 'hr',
+                       'Research Development' = 'rd',
+                       'Sales' = 'sales-1')
+
+```
+
+
+```{r valuebox_function}
+
+active_icon <- 'fa-caret-left'
+
+
+vb_func <- function(department, active) {
+  
+  dep <- str_to_title(department)
+  
+  caption_values <-
+    value_box_agg %>% filter(Department == department)
+  
+  valueBox(
+    value = str_to_title(department),
+    color = department_colors[dep],
+    href = paste0('#', str_to_lower(department_links[dep])),
+    
+    icon = if_else(active, active_icon, ''),
+    
+    caption = paste0(
+      if_else(active, '<i>', ''),
+      'Employees: <b>',
+      caption_values$count,
+      '</b><br>',
+      'Attrition Rate: <b>',
+      caption_values$attrition_rate,
+      '</b><br>',
+      'Very High Job Satisfaction: <b>',
+      caption_values$jobsat_topbox,
+      '</b><br>',
+      'Mean Monthly Income: <b>',
+      caption_values$mean_mnthincom,
+      '</b>',
+      if_else(active, '</i>', '')
+    )
+  )
+  
+}
+
+# creates function that will build the valueboxes based on department and
+# active page arguments. These will serve as page navigation and as
+# the color legend on the landing page
+
+```
+
+
+
+
+
+
+
+Total 
+=======================================
+
+
+
+
+Column {data-width=250}
+---------------------------------------
+
+
+### Total
+
+```{r Total_valuebox_total}
+
+vb_func('Total', TRUE)
+
+```
+
+
+
+### Sales
+
+```{r Total_valuebox_sales}
+
+vb_func('Sales', FALSE)
+
+```
+
+
+
+### Research Development
+
+```{r Total_valuebox_research_development}
+
+vb_func('Research Development', FALSE)
+
+```
+
+
+
+### Human Resources
+
+```{r Total_valuebox_human_resources}
+
+vb_func('Human Resources', FALSE)
+
+```
+
+
+
+
+
+Column {data-width=300}
+---------------------------------------
+
+### Attrition Rates by Job
+
+```{r Total_Attrition_Rates_by_Job}
+
+total_by_job_df <-
+  df %>%
+  mutate(across(c(Department, JobRole),
+                ~ str_replace_all(., '_', ' '))) %>%
+  left_join(tibble(
+    Department = c('Human Resources',
+                   'Research Development',
+                   'Sales'),
+    abbrv = c('HR',
+              'R&D',
+              'Sales')
+  )) %>%
+  mutate(job = paste0(abbrv, ' - ', JobRole)) %>%
+  group_by(Department,
+           JobRole,
+           job) %>%
+  summarise(
+    count = n(),
+    attrition_count = sum(Attrition == 'Yes'),
+    attrition_rate = attrition_count / count
+  ) %>%
+  ungroup()
+
+
+
+# vline and text copied from https://plotly.com/r/horizontal-vertical-shapes/
+
+vline <- function(x = 0, color = department_colors['Total']) {
+  list(
+    type = 'line',
+    y0 = 0,
+    y1 = 1,
+    yref = 'paper',
+    x0 = x,
+    x1 = x,
+    opacity = 0.25,
+    line = list(color = color, dash = 'dot')
+  )
+}
+
+
+a <- function(x = 0, color = department_colors['Total']) {
+  list(
+    type = 'line',
+    y = 0.25,
+    yref = 'paper',
+    x = x,
+    color = color,
+    text = '<i>baseline</i>',
+    textposition = 'left',
+    showarrow = FALSE
+  )
+}
+
+
+
+
+baseline <- sum(df$Attrition == 'Yes') / NROW(df)
+
+
+
+
+
+
+# creating custom tooltips with simple html tags helps add a ton of on-demand
+# context. I can't wait for the day we figure out how to replicate
+# Tableau's in-tooltip charts in a static file
+
+
+total_by_job_df %>%
+  
+  plot_ly(
+    x = ~ attrition_rate,
+    y = ~ reorder(job, attrition_rate),
+    color = ~ Department,
+    colors = department_colors
+  ) %>%
+  
+  add_bars(
+    text = ~ paste0(
+      'Department: <b>',
+      Department,
+      '</b><br>',
+      'Job: <b>',
+      JobRole,
+      '</b><br>',
+      'Attrition Rate: <b>',
+      percent(attrition_rate,
+              accuracy = 0.01),
+      '</b><br>',
+      'Count: <b>',
+      attrition_count,
+      ' of ',
+      count,
+      ' employees</b>'
+    ),
+    hoverinfo = 'text',
+    textposition = 'none' # don't forget this or you might see some weird labels
+  ) %>%
+  
+  add_text(
+    text = ~ paste0(
+      ' <b>',
+      percent(attrition_rate,
+              accuracy = 0.01),
+      '</b><br>',
+      '<i> ',
+      attrition_count,
+      ' of ',
+      count,
+      ' empl.</i>'
+    ),
+    textposition = 'right',
+    hoverinfo = 'none'
+  ) %>%
+  
+  layout(
+    showlegend = FALSE,
+    yaxis = list(title = FALSE,
+                 ticksuffix = ' '),
+    xaxis = list(
+      title = list(text = 'Attrition Rate <i>(lower is better)</i>'),
+      tickformat = '1%',
+      range = ~ c(0,
+                  max(attrition_rate * 1.5)) # helps provide space for labels
+    ),
+    shapes = list(vline(baseline)),
+    annotations = list(a(0.06 + baseline))
+  ) %>%
+  config(displayModeBar = FALSE)
+
+```
+
+
+
+
+
+Column {data-width=450}
+---------------------------------------
+
+### Numeric Variables Comparison &nbsp;&nbsp; <i>Hover for Details</i>
+
+```{r Total_Numeric_Variable_Comparison}
+
+yes_no_colors <- c('Yes' = '#FF6F00',
+                   'No' = '#BDBDBD')
+
+# creating singular references for re-used colors saves a lot of headache
+# and time spent searching your code for that one place you forgot to change
+# from gray300 to gray400....
+
+
+
+variable_cont_pivot_df <-
+  df %>%
+  select(Attrition,
+         where(is.numeric)) %>%
+  pivot_longer(
+    cols = c(Age:YearsWithCurrManager),
+    names_to = 'measure',
+    values_to = 'values'
+  ) %>%
+  group_by(measure) %>%
+  mutate(zscore = scale(values)[, 1]) %>%
+  ungroup()
+
+
+variable_cont_levels <-
+  variable_cont_pivot_df %>%
+  group_by(measure, Attrition) %>%
+  summarise(median_z = median(zscore),
+            median_value = median(values)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = Attrition,
+              values_from = c(median_z, median_value)) %>%
+  mutate(z_diff = abs(median_z_Yes - median_z_No)) %>%
+  arrange(desc(z_diff)) %>%
+  mutate(across(c(median_z_Yes, median_z_No),
+                ~ round(., 3)))
+
+
+
+
+
+cont_var_chart <-
+  variable_cont_levels %>%
+  plot_ly(x = ~ reorder(measure, (z_diff))) %>%
+  add_segments(
+    xend = ~ reorder(measure, (z_diff)),
+    y = ~ median_z_No,
+    yend = ~ median_z_Yes,
+    color = I('#000000'),
+    name = 'Variable Impact on Attrition',
+    hoverinfo = 'none'
+  ) %>%
+  add_markers(
+    y = ~ median_z_Yes,
+    color = I(yes_no_colors['Yes']),
+    size = I(80),
+    name = 'Attrition - Yes',
+    text = ~ paste0(
+      'Attrition: <b>Yes</b><br>',
+      'Variable: <b>',
+      measure,
+      '</b><br>',
+      'Median Z Score: <b>',
+      median_z_Yes,
+      '</b><br>',
+      'Median Value: <b>',
+      median_value_Yes,
+      '</b>'
+    ),
+    hoverinfo = 'text'
+  ) %>%
+  add_markers(
+    y = ~ median_z_No,
+    color = I(yes_no_colors['No']),
+    size = I(80),
+    name = 'Attrition - No',
+    text = ~ paste0(
+      'Attrition: <b>No</b><br>',
+      'Variable: <b>',
+      measure,
+      '</b><br>',
+      'Median Z Score: <b>',
+      median_z_No,
+      '</b><br>',
+      'Median Value: <b>',
+      median_value_No,
+      '</b>'
+    ),
+    hoverinfo = 'text'
+  ) %>%
+  layout(
+    legend = list(
+      orientation = 'h',
+      x = 0.01,
+      y = 0.99,
+      xanchor = 'left'
+    ),
+    xaxis = list(title = FALSE),
+    yaxis = list(title = 'Difference in Median Z Score'),
+    title = FALSE,
+    hovermode = 'x'
+  ) %>%
+  config(displayModeBar = FALSE)
+
+
+
+
+cont_var_chart
+
+```
+
+
+
+### Categorical Variables Comparison &nbsp;&nbsp; <i>Hover for Details</i>
+
+```{r Total_Categorical_Variables}
+
+variable_discr_pivot_df <-
+  df %>%
+  select(-c(JobRole, Department)) %>%
+  select(Attrition, !where(is.numeric)) %>%
+  mutate_all(as.character) %>%
+  pivot_longer(
+    cols = c(BusinessTravel:WorkLifeBalance),
+    names_to = 'measure',
+    values_to = 'values'
+  ) %>%
+  count(Attrition,
+        measure,
+        values) %>%
+  ungroup() %>%
+  pivot_wider(names_from = Attrition,
+              values_from = n) %>%
+  mutate(perc_yes = Yes / (Yes + No)) %>%
+  arrange(measure,
+          values,
+          perc_yes) %>%
+  group_by(measure) %>%
+  mutate(clr = as.character(row_number())) %>%
+  ungroup() %>%
+  mutate(
+    above_mean = case_when(
+      perc_yes > mean(perc_yes) + sd(perc_yes)
+      ~ 'High % Yes',
+      perc_yes <= mean(perc_yes) + sd(perc_yes) &
+        perc_yes >= mean(perc_yes) - sd(perc_yes)
+      ~ 'Medium % Yes',
+      perc_yes < mean(perc_yes) - sd(perc_yes)
+      ~ 'Low % Yes',
+      TRUE ~ 'err'
+    )
+  )
+
+
+
+
+
+discr_var_chart <-
+  variable_discr_pivot_df %>%
+  plot_ly(x = ~ reorder(measure,
+                        FUN = max,
+                        X = perc_yes),
+          y = ~ perc_yes) %>%
+  add_bars(
+    color = ~ above_mean,
+    colors = c(
+      'High % Yes' = '#E57373',
+      'Medium % Yes' = '#AB47BC',
+      'Low % Yes' = '#29B6F6',
+      'err' = '#CFD8DC'
+    ),
+    text = ~ paste0(
+      'Variable: <b>',
+      measure,
+      ' - ',
+      values,
+      '</b><br>',
+      'Percent Attrition Yes: <b>',
+      percent(perc_yes,
+              accuracy = 0.01),
+      '</b><br>',
+      'Range: <b>',
+      above_mean,
+      '</b>'
+      
+    ),
+    hoverinfo = 'text',
+    name = ~ values,
+    legendgroup = ~ above_mean,
+    showlegend = FALSE,
+    textposition = 'none',
+    marker = list(line = list(color = '#FFFFFF',
+                              width = 1))
+  ) %>%
+  layout(
+    barmode = 'relative',
+    hovermode = 'x',
+    title = FALSE,
+    yaxis = list(
+      tickformat = '1%',
+      title = list(text = 'Percent Attrition - Yes'),
+      showticklabels = FALSE
+    ),
+    xaxis = list(title = FALSE)
+  ) %>%
+  config(displayModeBar = FALSE)
+
+
+
+discr_var_chart
+
+```
+
+
+
+
+
+
+
+Sales
+=======================================
+
+
+
+
+Column {data-width=250}
+---------------------------------------
+
+
+### Total
+
+```{r Sales_valuebox_total}
+
+vb_func('Total', FALSE)
+
+```
+
+
+
+### Sales
+
+```{r Sales_valuebox_sales}
+
+vb_func('Sales', TRUE)
+
+```
+
+
+
+### Research Development
+
+```{r Sales_valuebox_research_development}
+
+vb_func('Research Development', FALSE)
+
+```
+
+
+
+### Human Resources
+
+```{r Sales_valuebox_human_resources}
+
+vb_func('Human Resources', FALSE)
+
+```
+
+
+<!-- 
+keeping the same BAN valueboxes for each page if possible allows you to use
+them for page navigation and I think it makes the final product
+feel more cohesive
+-->
+
+
+
+
+Column{data-width=275}
+--------------------------------------
+
+
+
+
+```{r Sales_Shared_Data}
+
+
+sales_jobrole_categorical_sd <-
+  df %>%
+  filter(Department == 'Sales') %>%
+  select(-Department) %>% 
+  select(Attrition,
+         JobRole,!where(is.numeric)) %>%
+  mutate_all(as.character) %>%
+  pivot_longer(
+    cols = c(BusinessTravel:WorkLifeBalance),
+    names_to = 'variable',
+    values_to = 'value'
+  ) %>%
+  group_by(JobRole,
+           variable,
+           value) %>%
+  summarise(attrition_yes = sum(Attrition == 'Yes'),
+            count = n()) %>%
+  ungroup() %>%
+  group_by(JobRole,
+           variable) %>% 
+  mutate(attrition_rate = attrition_yes / sum(count)) %>% 
+  arrange(JobRole,
+          variable,
+          desc(attrition_rate)) %>% 
+  mutate(y_axis_index = row_number()) %>% 
+  ungroup() %>% 
+  group_by(variable) %>% 
+  mutate(x_axis_index = max(attrition_rate)) %>% 
+  ungroup() %>%  
+  SharedData$new(key = ~ JobRole,
+                 group = 'SD_SalesJobRole')
+
+
+
+```
+
+
+
+
+
+
+
+### Sales Job Roles
+
+
+```{r Sales_Job_Roles}
+
+sales_jobrole_categorical_sd %>% 
+  plot_ly() %>% 
+  group_by(JobRole) %>% 
+  summarise(attrition_rate = sum(attrition_yes) / sum(count)) %>% 
+  add_bars(x = ~ reorder(JobRole,
+                         desc(attrition_rate)),
+           y = ~ attrition_rate,
+           color = I(department_colors['Sales']),
+           text = ~ paste0('Job Role:<b>',
+                           JobRole,
+                           '</b><br>',
+                           'Attrition Rate: <b>',
+                           percent(attrition_rate,
+                                   accuracy = 0.1),
+                           '</b>'),
+           hoverinfo = 'text',
+           textposition = 'none') %>% 
+  add_text(x = ~ reorder(JobRole,
+                         desc(attrition_rate)),
+           y = ~ attrition_rate,
+           color = I(department_colors['Sales']),
+           text = ~ percent(attrition_rate,
+                            accuracy = 0.1),
+           textposition = 'top',
+           hoverinfo = 'none') %>% 
+  layout(yaxis = list(title = 'Attrition Rate',
+         tickformat = '0.1%',
+         range = ~ c(0, max(attrition_rate) * 1.15)),
+         xaxis = list(title = FALSE),
+         showlegend = FALSE,
+         barmode = 'overlay'
+         ) %>%
+  highlight() %>% 
+  config(displayModeBar = FALSE)
+
+
+```
+
+
+
+
+
+### Filter
+
+
+```{r Sales_Filter}
+
+
+filter_select(
+  id = 'SD_SalesJobRole',
+  label = 'Select Role',
+  sharedData = sales_jobrole_categorical_sd,
+  group = ~ JobRole,
+  multiple = FALSE
+)
+
+
+```
+
+
+
+
+
+
+
+Column{data-width=475}
+--------------------------------------
+
+
+### Sales Response Distributions
+
+```{r Sales_Response_Distributions}
+
+
+sales_jobrole_categorical_sd %>% 
+  plot_ly() %>% 
+  add_heatmap(x = ~ reorder(variable,
+                            desc(x_axis_index)),
+              y = ~ y_axis_index,
+              z = ~ attrition_rate,
+              text = ~ paste0('Category: <b>',
+                              variable,
+                              '</b><br>',
+                              'Value: <b>',
+                              value,
+                              '</b><br>',
+                              'Attrition Rate: <b>',
+                              percent(attrition_rate,
+                                      accuracy = 0.1),
+                              '</b>'),
+              hoverinfo = 'text',
+              xgap = 1,
+              ygap = 1) %>% 
+  colorbar(title = list(text = 'Attrition Rate'),
+           tickformat = '0.1%') %>% 
+  layout(title = list(text = '<b>Attrition Rates by Category</b>',
+                      x = 0.05),
+         margin = list(t = 50),
+         xaxis = list(title = FALSE,
+                      showgrid = FALSE),
+         yaxis = list(title = '<i><b>hover over grid for data</b></i>',
+                      showticklabels = FALSE,
+                      ticks = '',
+                      showgrid = FALSE))
+
+
+
+
+```
+
+
+
+
+
+
+
+RD
+=======================================
+
+
+
+Column {data-width=250}
+---------------------------------------
+
+
+### Total
+
+```{r RD_valuebox_total}
+
+vb_func('Total', FALSE)
+
+```
+
+
+
+### Sales
+
+```{r RD_valuebox_sales}
+
+vb_func('Sales', FALSE)
+
+```
+
+
+
+### Research Development
+
+```{r RD_valuebox_research_development}
+
+vb_func('Research Development', TRUE)
+
+```
+
+
+
+### Human Resources
+
+```{r RD_valuebox_human_resources}
+
+vb_func('Human Resources', FALSE)
+
+```
+
+
+
+
+
+
+
+
+```{r RD_Shared_Data}
+
+rd_sd <-
+  df %>%
+  filter(Department == 'Research_Development') %>%
+  SharedData$new(key = ~ Attrition,
+                 group = 'SD_RD_Attrition')
+
+
+```
+
+
+
+
+
+
+
+
+Column {data-width=750}
+---------------------------------------
+
+
+
+### Research and Development Scatterplot with Marginal Distribution  &nbsp;&nbsp; <i>Hover Over Point for Details</i>
+
+
+```{r RD_Scatterplot}
+
+subplot(
+  nrows = 2,
+  widths = c(0.8, 0.2),
+  heights = c(0.2, 0.8),
+  shareX = TRUE,
+  shareY = TRUE,
+  
+  rd_sd %>%
+    plot_ly(x = ~ MonthlyIncome) %>%
+    add_boxplot(
+      color = ~ Attrition,
+      colors = yes_no_colors,
+      showlegend = TRUE
+    ),
+  
+  plotly_empty(),
+  
+  rd_sd %>%
+    plot_ly(x = ~ MonthlyIncome,
+            y = ~ Age) %>%
+    add_markers(
+      color = ~ Attrition,
+      colors = yes_no_colors,
+      text = ~ paste0(
+        'Attrition: <b>',
+        Attrition,
+        '</b><br>',
+        'Monthly Income: <b>',
+        MonthlyIncome,
+        '</b><br>',
+        'Age: <b>',
+        Age,
+        '</b><br>',
+        'Business Travel: <b>',
+        BusinessTravel,
+        '</b><br>',
+        'Education: <b>',
+        Education,
+        '</b><br>',
+        'Education Field: <b>',
+        EducationField,
+        '</b><br>',
+        'Environmental Satisfaction: <b>',
+        EnvironmentSatisfaction,
+        '</b><br>',
+        'Gender: <b>',
+        Gender,
+        '</b><br>',
+        'Job Involvement: <b>',
+        JobInvolvement,
+        '</b><br>',
+        'Job Role: <b>',
+        JobRole,
+        '</b><br>',
+        'Job Satisfaction: <b>',
+        JobSatisfaction,
+        '</b><br>',
+        'Marital Status: <b>',
+        MaritalStatus,
+        '</b><br>',
+        'Overtime: <b>',
+        OverTime,
+        '</b><br>',
+        'Performance Rating: <b>',
+        PerformanceRating,
+        '</b><br>',
+        'Relationship Satisfaction: <b>',
+        RelationshipSatisfaction,
+        '</b><br>',
+        'Work-Life Balance: <b>',
+        WorkLifeBalance,
+        '</b>'
+      ),
+      hoverinfo = 'text',
+      textposition = 'none',
+      alpha = 0.65,
+      size = 1,
+      showlegend = FALSE
+    ) %>%
+    layout(
+      xaxis = list(
+        tickformat = '$1',
+        title = 'Monthly Income',
+        showspikes = TRUE,
+        spikecolor = '#212121',
+        spikethickness = 1,
+        spikemode = 'toaxis+across'
+      ),
+      yaxis = list(
+        showspikes = TRUE,
+        spikecolor = '#212121',
+        spikethickness = 1,
+        spikemode = 'toaxis+across'
+      )
+    ) %>%
+    toWebGL(),
+  
+  
+  rd_sd %>%
+    plot_ly(y = ~ Age) %>%
+    add_boxplot(
+      color = ~ Attrition,
+      colors = yes_no_colors,
+      showlegend = FALSE
+    )
+) %>%
+  
+  highlight(on = 'plotly_hover',
+            selected = attrs_selected(showlegend = FALSE)) %>%
+  
+  config(displayModeBar = FALSE)
+
+
+# I really like the additional context marginal distributions can add to 
+# a scatterplot. Combined with cross-axis spike lines you can easily 
+# see exactly where each point lies
+
+```
+
+
+
+
+
+HR
+=======================================
+
+
+
+Column {data-width=250}
+---------------------------------------
+
+
+### Total
+
+```{r HR_valuebox_total}
+
+vb_func('Total', FALSE)
+
+```
+
+
+
+### Sales
+
+```{r HR_valuebox_sales}
+
+vb_func('Sales', FALSE)
+
+```
+
+
+
+### Research Development
+
+```{r HR_valuebox_research_development}
+
+vb_func('Research Development', FALSE)
+
+```
+
+
+
+### Human Resources
+
+```{r HR_valuebox_human_resources}
+
+vb_func('Human Resources', TRUE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r HR_Shared_Data}
+
+hr_sd <-
+  df %>%
+  filter(Department == 'Human_Resources') %>%
+  arrange(TotalWorkingYears) %>%
+  mutate(rn = as.character(row_number()),
+# I spent about an hour troubleshooting this piece before realizing that
+# the "rn" key I created was numeric and being treated as such for the 
+# slider filter. I wish I could say this was the first time I've forgotten
+# this key detail...
+
+         cnt = 1) %>%
+  select(rn,
+         Attrition,
+         Department,
+         TotalWorkingYears,
+         everything()) %>%
+  
+  SharedData$new(key = ~ rn,
+                 group = 'HR_SD')
+
+```
+
+
+
+
+
+
+Column {data-width=250}
+---------------------------------------
+
+
+
+### Total Working Years Slider
+
+
+```{r HR_Slider}
+
+filter_slider(id = 'hr_slider',
+              label = 'Total Working Years',
+              sharedData = hr_sd,
+              column = ~ TotalWorkingYears)
+
+```
+
+
+
+
+
+### Attrition Donut
+
+```{r HR_Donut}
+
+  hr_sd %>%
+    plot_ly() %>%
+    group_by(Attrition) %>%
+    summarise(n = n()) %>%
+    add_pie(labels = ~ Attrition,
+            values = ~ n,
+            hole = 0.55,
+            hoverinfo = 'none',
+            marker = list(line = list(width = 2,
+                               color = '#FFFFFF'))) %>% 
+  layout(
+    title = list(text = 'Human Resources Attrition',
+                 x = 0.05),
+    margin = list(t = 50),
+    legend = list(
+      x = 0.5,
+      y = 0.5,
+      xanchor = 'center',
+      yanchor = 'center'
+    )
+  ) %>%
+  highlight(on = 'plotly_selected') %>%
+  config(displayModeBar = FALSE)
+
+
+# people seem to hate pie charts but often lack such animosity towards
+# donut charts. Not sure why, but I personally like the fact that I can put the 
+# legend inside the donut when screen space is at a premium
+
+```
+
+
+
+
+
+
+
+Column {data-width=500}
+---------------------------------------
+
+
+
+
+
+
+### Human Resources Data Table
+
+```{r HR_Data_Table}
+
+hr_sd %>% 
+  datatable(
+    extensions = 'Buttons',
+    options = list(
+      pageLength = 10000,
+      fillContainer = TRUE,
+      scrollY = 690,
+# something changed a while back in the DT package and now you have to specify
+# a Y scroll or your tables get chopped off
+      scrollCollapse = TRUE,
+      scrollX = TRUE,
+      columnDefs = list(
+        list(className = 'dt-center', targets = '_all'),
+        list(visible = FALSE, targets = c(0))),
+      
+      dom = 'Bfrt',
+      buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+# export options help with the "your dashboard is great, but can I 
+# get it in excel?" request that always seems inevitable
+    ),
+    rownames = FALSE
+  )
+
+```
+
+
+
+
+
+
+<!--
+
+
+Final Notes
+------------------------------------------------------------
+
+I hope you found this brief demonstration helpful. I've tried to create
+something I would have liked to have had when I first started using plotly
+and client-side interactivity. 
+
+I won't claim to be an expert as I've picked up most of my R knowledge from
+google, youtube, stackoverflow, reading the O'Reilly books with the animals
+on the covers, and from making more mistakes than I care to think about.
+
+This approach evolved from having to work around the constraints of not 
+being able to have or use a Shiny server and develop fully functional apps
+due to the nature of data I work with. That being said, this has been my
+go-to way of developing and sharing reports and analyses internally and
+works well within the scope of my limited audience.
+I would be hesitant to try and scale this approach beyond a relatively
+tightly controlled process or to use as a direct replacement for Shiny. 
+
+If you have any questions or want to reach out, please feel free to shoot me a
+message at my Linked In page https://www.linkedin.com/in/hughwelchdata
+I'm usually more responsive there than email or github.
+
+ - Hugh
+
+-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
